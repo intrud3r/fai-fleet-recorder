@@ -39,6 +39,11 @@
   #dupPrompt.hidden { display: none; }
   #dupPrompt p { margin: 0 0 10px; font-size: 17px; }
   #dupPrompt .row { display: flex; gap: 8px; }
+  #currentPreview {
+    background: #1b232c; border: 1px solid #2c3947; border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 12px; font-size: 15px; color: #c7d3de;
+  }
+  #currentPreview b { color: #7ff0ff; }
   #summary { font-size: 14px; color: #8fa2b3; margin-bottom: 8px; }
   table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 16px; table-layout: fixed; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #263140; overflow-wrap: break-word; }
@@ -52,7 +57,7 @@
 
 <form id="entryForm" autocomplete="off">
   <input id="entryInput" type="text" autocapitalize="off" autocorrect="off"
-         enterkeyhint="go" placeholder="Speak or type entry…">
+         enterkeyhint="go" placeholder="Truck #, FAI, date, notes, or Next…">
   <button type="submit">Go</button>
 </form>
 
@@ -63,6 +68,8 @@
     <button id="dupNew" class="secondary">Create Another</button>
   </div>
 </div>
+
+<div id="currentPreview">Ready for the first truck.</div>
 
 <div id="summary"></div>
 <table>
@@ -89,10 +96,16 @@ const MONTH_RE = new RegExp("\\b(" + MONTH_PATTERN + ")\\.?\\s+(\\d{4}|\\d{2})\\
 const SLASH_DATE_RE = /\b(\d{1,2})\s*\/\s*(\d{2,4})\b/;
 
 // --- State -------------------------------------------------------------
+// Voice dictation on mobile arrives as short separate snippets (tap mic,
+// say one thing, it lands in the field) rather than one long sentence, so
+// entries are built up incrementally across multiple submissions instead
+// of requiring it all in one line. "Next" is what actually commits it.
 let entries = loadEntries();
-let lastIndex = entries.length ? entries.length - 1 : -1;
+let currentEntry = { truck: null, date: null, notes: "" };
+let faiMode = false;   // just heard "FAI" -- next snippet is the date
+let noteMode = false;  // just heard "notes" -- next snippet is the note text
 let editingIndex = null;
-let pendingDuplicate = null; // { parsed: {truck, date} }
+let pendingDuplicate = null; // { entry: {truck, date, notes} }
 
 function loadEntries() {
   try {
@@ -145,6 +158,36 @@ function parseTruckEntry(rawText) {
   return { truck: numMatch[0], date: dateStr };
 }
 
+// A date said on its own (after a "FAI" cue, or as a stray correction).
+function parseBareDate(rawText) {
+  const s = rawText.replace(/,/g, " ");
+  let m = s.match(SLASH_DATE_RE);
+  if (m) {
+    const mo = parseInt(m[1], 10);
+    if (mo >= 1 && mo <= 12) return String(mo).padStart(2, "0") + "/" + normalizeYear(m[2]);
+  }
+  m = s.match(MONTH_RE);
+  if (m) return String(MONTHS[m[1].toLowerCase()]).padStart(2, "0") + "/" + normalizeYear(m[2]);
+  return null;
+}
+
+// A truck number said on its own, with any filler words stripped.
+function parseBareTruck(rawText) {
+  const s = rawText
+    .replace(/\btruck\b/gi, "")
+    .replace(/\bfai\b/gi, "")
+    .replace(/\bdecal\b/gi, "")
+    .replace(/\bexpires?\b/gi, "")
+    .trim();
+  return /^\d+$/.test(s) ? s : null;
+}
+
+// Dictation sometimes spells out short acronyms ("F.A.I.", "F A I") --
+// strip everything but letters before comparing against a cue word.
+function cleanedWord(rawText) {
+  return rawText.replace(/[^a-z]/gi, "").toLowerCase();
+}
+
 // --- UI helpers -------------------------------------------------------------
 const statusEl = document.getElementById("status");
 const inputEl = document.getElementById("entryInput");
@@ -152,6 +195,7 @@ const summaryEl = document.getElementById("summary");
 const bodyEl = document.getElementById("entriesBody");
 const dupPromptEl = document.getElementById("dupPrompt");
 const dupTextEl = document.getElementById("dupText");
+const previewEl = document.getElementById("currentPreview");
 
 function setStatus(text, isError) {
   statusEl.textContent = text;
@@ -181,10 +225,28 @@ function escapeHtml(s) {
   }[c]));
 }
 
-function showDuplicatePrompt(parsed) {
-  pendingDuplicate = { parsed };
+function renderPreview() {
+  if (!currentEntry.truck && !currentEntry.date && !currentEntry.notes) {
+    previewEl.textContent = "Ready for the first truck.";
+    return;
+  }
+  const parts = [`Truck: <b>${currentEntry.truck ? escapeHtml(currentEntry.truck) : "—"}</b>`];
+  parts.push(`FAI: <b>${currentEntry.date ? escapeHtml(currentEntry.date) : "—"}</b>`);
+  if (currentEntry.notes) parts.push(`Notes: <b>${escapeHtml(currentEntry.notes)}</b>`);
+  previewEl.innerHTML = parts.join("&nbsp;&nbsp;&nbsp;");
+}
+
+function resetCurrentEntry() {
+  currentEntry = { truck: null, date: null, notes: "" };
+  faiMode = false;
+  noteMode = false;
+  renderPreview();
+}
+
+function showDuplicatePrompt(entry) {
+  pendingDuplicate = { entry };
   dupTextEl.textContent =
-    `Truck ${parsed.truck} already exists. Replace the previous entry or create another record?`;
+    `Truck ${entry.truck} already exists. Replace the previous entry or create another record?`;
   dupPromptEl.classList.remove("hidden");
 }
 function hideDuplicatePrompt() {
@@ -192,57 +254,82 @@ function hideDuplicatePrompt() {
   dupPromptEl.classList.add("hidden");
 }
 
-function recordEntry(parsed) {
+// "Next" -- commit whatever's been built up in currentEntry so far.
+function commitCurrentEntry() {
+  if (!currentEntry.truck) return; // nothing to commit yet -- silent no-op
+
+  if (editingIndex === null) {
+    const dupIdx = entries.findIndex((e) => e.truck === currentEntry.truck);
+    if (dupIdx !== -1) {
+      showDuplicatePrompt({ ...currentEntry });
+      return;
+    }
+  } else {
+    const dupIdx = entries.findIndex((e, i) => e.truck === currentEntry.truck && i !== editingIndex);
+    if (dupIdx !== -1) {
+      setStatus(`Truck ${currentEntry.truck} already exists elsewhere. Delete it first.`, true);
+      editingIndex = null;
+      resetCurrentEntry();
+      return;
+    }
+  }
+  finalizeEntry(currentEntry);
+}
+
+function finalizeEntry(entry) {
+  const record = { truck: entry.truck, date: entry.date || "", notes: entry.notes || "" };
   if (editingIndex !== null) {
-    entries[editingIndex].truck = parsed.truck;
-    entries[editingIndex].date = parsed.date;
-    lastIndex = editingIndex;
+    entries[editingIndex] = record;
     editingIndex = null;
   } else {
-    entries.push({ truck: parsed.truck, date: parsed.date, notes: "" });
-    lastIndex = entries.length - 1;
+    entries.push(record);
   }
   saveEntries();
   render();
   setStatus("Recorded");
+  resetCurrentEntry();
 }
 
 // --- Command handling -------------------------------------------------------
+// Each call handles ONE dictation snippet -- a whole entry is built up
+// across several calls (truck number, "FAI", date, "notes", note text) and
+// only actually recorded when "Next" commits it. A full line in one breath
+// (typed, or one continuous dictation) still works too.
 function handleSubmit(rawText) {
   const text = rawText.trim();
   if (!text) return;
   const lower = text.toLowerCase();
+  const cleaned = cleanedWord(text);
 
   // A pending duplicate-resolution response takes priority over everything else.
   if (pendingDuplicate) {
     if (lower === "replace") {
-      const idx = entries.findIndex((e) => e.truck === pendingDuplicate.parsed.truck);
-      if (idx !== -1) {
-        entries[idx].date = pendingDuplicate.parsed.date;
-        lastIndex = idx;
-      }
+      const idx = entries.findIndex((e) => e.truck === pendingDuplicate.entry.truck);
+      if (idx !== -1) entries[idx] = { ...pendingDuplicate.entry };
       hideDuplicatePrompt();
       saveEntries();
       render();
       setStatus("Recorded");
+      resetCurrentEntry();
       return;
     }
     if (lower === "new" || lower === "another" || lower === "create another") {
-      entries.push({ truck: pendingDuplicate.parsed.truck, date: pendingDuplicate.parsed.date, notes: "" });
-      lastIndex = entries.length - 1;
+      entries.push({ ...pendingDuplicate.entry });
       hideDuplicatePrompt();
       saveEntries();
       render();
       setStatus("Recorded");
+      resetCurrentEntry();
       return;
     }
-    setStatus('Replace the previous entry or create another record?', true);
+    setStatus("Replace the previous entry or create another record?", true);
     return;
   }
 
-  if (lower === "next truck") {
-    refocus();
-    return; // silent -- just waits for the next input
+  // "Next" always wins -- commits currentEntry and resets, escaping any mode.
+  if (cleaned === "next") {
+    commitCurrentEntry();
+    return;
   }
 
   if (lower === "show list") {
@@ -261,7 +348,6 @@ function handleSubmit(rawText) {
       return;
     }
     entries.pop();
-    lastIndex = entries.length - 1;
     saveEntries();
     render();
     setStatus("Deleted.");
@@ -276,10 +362,11 @@ function handleSubmit(rawText) {
       return;
     }
     editingIndex = idx;
-    inputEl.value = `${entries[idx].truck} ${entries[idx].date}`;
-    inputEl.focus();
-    inputEl.select();
-    setStatus(`Editing truck ${editMatch[1]}. Redictate the entry and press Go.`);
+    currentEntry = { truck: entries[idx].truck, date: entries[idx].date || null, notes: entries[idx].notes || "" };
+    faiMode = false;
+    noteMode = false;
+    renderPreview();
+    setStatus(`Editing truck ${editMatch[1]}. Say FAI + date, notes, or Next to save.`);
     return;
   }
 
@@ -288,43 +375,72 @@ function handleSubmit(rawText) {
     return;
   }
 
-  const noteMatch = text.match(/^note\s+(.+)$/i);
+  // Combined "notes <text>" in one breath.
+  const noteMatch = text.match(/^notes?\s+(.+)$/i);
   if (noteMatch) {
-    if (lastIndex === -1 || !entries[lastIndex]) {
-      setStatus("No entry to attach a note to.", true);
-      return;
-    }
-    const existing = entries[lastIndex].notes;
-    entries[lastIndex].notes = existing ? `${existing}; ${noteMatch[1]}` : noteMatch[1];
-    saveEntries();
-    render();
-    setStatus("Recorded");
+    currentEntry.notes = currentEntry.notes ? `${currentEntry.notes}; ${noteMatch[1]}` : noteMatch[1];
+    noteMode = false;
+    renderPreview();
     return;
   }
 
-  // Otherwise: a new (or edited) truck entry.
-  const parsed = parseTruckEntry(text);
-  if (!parsed) {
-    setStatus("Could not parse that entry. Try again.", true);
+  // Bare "notes" cue -- the next snippet is the note text.
+  if (cleaned === "notes" || cleaned === "note") {
+    noteMode = true;
+    renderPreview();
+    return;
+  }
+  if (noteMode) {
+    currentEntry.notes = currentEntry.notes ? `${currentEntry.notes}; ${text}` : text;
+    noteMode = false;
+    renderPreview();
     return;
   }
 
-  if (editingIndex === null) {
-    const dupIdx = entries.findIndex((e) => e.truck === parsed.truck);
-    if (dupIdx !== -1) {
-      showDuplicatePrompt(parsed);
+  // Bare "FAI" cue -- never left sitting in the field, just a mode switch.
+  if (cleaned === "fai") {
+    faiMode = true;
+    renderPreview();
+    return;
+  }
+  if (faiMode) {
+    const dateOnly = parseBareDate(text);
+    if (!dateOnly) {
+      setStatus("Didn't catch a date. Try again.", true);
       return;
     }
-  } else {
-    const dupIdx = entries.findIndex((e, i) => e.truck === parsed.truck && i !== editingIndex);
-    if (dupIdx !== -1) {
-      setStatus(`Truck ${parsed.truck} already exists elsewhere. Delete it first.`, true);
-      editingIndex = null;
-      return;
-    }
+    currentEntry.date = dateOnly;
+    faiMode = false;
+    renderPreview();
+    return;
   }
 
-  recordEntry(parsed);
+  // A full line in one breath (truck + date together) -- still supported.
+  const combined = parseTruckEntry(text);
+  if (combined) {
+    currentEntry.truck = combined.truck;
+    currentEntry.date = combined.date;
+    renderPreview();
+    return;
+  }
+
+  // A bare truck number on its own.
+  const bareTruck = parseBareTruck(text);
+  if (bareTruck) {
+    currentEntry.truck = bareTruck;
+    renderPreview();
+    return;
+  }
+
+  // A bare date on its own (said out of order, or a correction).
+  const bareDate = parseBareDate(text);
+  if (bareDate) {
+    currentEntry.date = bareDate;
+    renderPreview();
+    return;
+  }
+
+  setStatus("Could not parse that. Try again.", true);
 }
 
 // --- Export -------------------------------------------------------------
