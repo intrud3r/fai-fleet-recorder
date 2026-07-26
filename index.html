@@ -49,6 +49,12 @@
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #263140; overflow-wrap: break-word; }
   th { color: #8fa2b3; font-weight: 600; font-size: 13px; text-transform: uppercase; }
   #exportBtn { width: 100%; }
+  th.actionsCol, td.actionsCol { width: 60px; text-align: right; }
+  .rowDelete {
+    font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 8px;
+    background: #3a232a; color: #ff8a80; border: 1px solid #5a2f36;
+  }
+  .rowDelete:active { background: #4a2a30; }
 </style>
 </head>
 <body>
@@ -73,7 +79,7 @@
 
 <div id="summary"></div>
 <table>
-  <thead><tr><th>Truck</th><th>FAI Date</th><th>Notes</th></tr></thead>
+  <thead><tr><th>Truck</th><th>FAI Date</th><th>Notes</th><th class="actionsCol"></th></tr></thead>
   <tbody id="entriesBody"></tbody>
 </table>
 
@@ -319,12 +325,13 @@ function render() {
     ? `${entries.length} truck${entries.length === 1 ? "" : "s"} recorded`
     : "No trucks recorded yet";
   bodyEl.innerHTML = "";
-  for (const e of entries) {
+  entries.forEach((e, idx) => {
     const tr = document.createElement("tr");
     tr.innerHTML =
-      `<td>${escapeHtml(e.truck)}</td><td>${escapeHtml(e.date)}</td><td>${escapeHtml(e.notes || "")}</td>`;
+      `<td>${escapeHtml(e.truck)}</td><td>${escapeHtml(e.date)}</td><td>${escapeHtml(e.notes || "")}</td>` +
+      `<td class="actionsCol"><button type="button" class="rowDelete" data-idx="${idx}">Delete</button></td>`;
     bodyEl.appendChild(tr);
-  }
+  });
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -526,6 +533,25 @@ document.getElementById("entryForm").addEventListener("submit", (ev) => {
   const text = inputEl.value;
   refocus();
   handleSubmit(text);
+});
+bodyEl.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".rowDelete");
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.idx, 10);
+  if (Number.isNaN(idx) || !entries[idx]) return;
+  const truck = entries[idx].truck;
+  entries.splice(idx, 1);
+  if (editingIndex !== null) {
+    if (editingIndex === idx) {
+      editingIndex = null;
+      resetCurrentEntry();
+    } else if (editingIndex > idx) {
+      editingIndex -= 1;
+    }
+  }
+  saveEntries();
+  render();
+  setStatus(`Deleted truck ${truck}.`);
 });
 document.getElementById("dupReplace").addEventListener("click", () => handleSubmit("replace"));
 document.getElementById("dupNew").addEventListener("click", () => handleSubmit("new"));
