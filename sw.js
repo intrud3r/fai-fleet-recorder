@@ -1,7 +1,7 @@
 // Cache-first service worker so the app keeps working with zero signal in
 // the field once it's been opened at least once. No network dependency in
 // the fetch handler beyond that first cache warm-up.
-const CACHE_NAME = "fai-fleet-v1";
+const CACHE_NAME = "fai-fleet-v2";
 const ASSETS = ["./", "./index.html", "./exceljs.min.js"];
 
 self.addEventListener("install", (event) => {
