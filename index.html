@@ -32,13 +32,13 @@
   }
   button:active { background: #5fd8ec; }
   button.secondary { background: #2c3947; color: #e8edf2; }
-  #dupPrompt {
+  .promptBox {
     background: #26313d; border: 2px solid #7ff0ff; border-radius: 10px;
     padding: 12px; margin-bottom: 12px;
   }
-  #dupPrompt.hidden { display: none; }
-  #dupPrompt p { margin: 0 0 10px; font-size: 17px; }
-  #dupPrompt .row { display: flex; gap: 8px; }
+  .promptBox.hidden { display: none; }
+  .promptBox p { margin: 0 0 10px; font-size: 17px; }
+  .promptBox .row { display: flex; gap: 8px; flex-wrap: wrap; }
   #currentPreview {
     background: #1b232c; border: 1px solid #2c3947; border-radius: 10px;
     padding: 10px 12px; margin-bottom: 12px; font-size: 15px; color: #c7d3de;
@@ -48,7 +48,8 @@
   table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 16px; table-layout: fixed; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #263140; overflow-wrap: break-word; }
   th { color: #8fa2b3; font-weight: 600; font-size: 13px; text-transform: uppercase; }
-  #exportBtn { width: 100%; }
+  #exportRow { display: flex; gap: 8px; }
+  #exportRow button { flex: 1; }
   th.actionsCol, td.actionsCol { width: 60px; text-align: right; }
   .rowDelete {
     font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 8px;
@@ -67,11 +68,20 @@
   <button type="submit">Go</button>
 </form>
 
-<div id="dupPrompt" class="hidden">
+<div id="dupPrompt" class="promptBox hidden">
   <p id="dupText"></p>
   <div class="row">
     <button id="dupReplace">Replace</button>
     <button id="dupNew" class="secondary">Create Another</button>
+  </div>
+</div>
+
+<div id="newReportPrompt" class="promptBox hidden">
+  <p id="newReportText"></p>
+  <div class="row">
+    <button id="nrExportFirst">Export First</button>
+    <button id="nrClearAnyway" class="secondary">Clear Without Exporting</button>
+    <button id="nrCancel" class="secondary">Cancel</button>
   </div>
 </div>
 
@@ -83,7 +93,10 @@
   <tbody id="entriesBody"></tbody>
 </table>
 
-<button id="exportBtn">Export .xlsx</button>
+<div id="exportRow">
+  <button id="exportBtn">Export .xlsx</button>
+  <button id="newReportBtn" class="secondary">New Report</button>
+</div>
 
 <script src="exceljs.min.js"></script>
 <script>
@@ -112,6 +125,10 @@ let faiMode = false;   // just heard "FAI" -- next snippet is the date
 let noteMode = false;  // just heard "notes" -- next snippet is the note text
 let editingIndex = null;
 let pendingDuplicate = null; // { entry: {truck, date, notes} }
+// Export status isn't persisted across reloads, so if entries already exist
+// at load time, assume they're unexported -- safer than risking silent data
+// loss on a stale "already exported" assumption.
+let unexportedChanges = entries.length > 0;
 
 function loadEntries() {
   try {
@@ -309,6 +326,8 @@ const bodyEl = document.getElementById("entriesBody");
 const dupPromptEl = document.getElementById("dupPrompt");
 const dupTextEl = document.getElementById("dupText");
 const previewEl = document.getElementById("currentPreview");
+const newReportPromptEl = document.getElementById("newReportPrompt");
+const newReportTextEl = document.getElementById("newReportText");
 
 function setStatus(text, isError) {
   statusEl.textContent = text;
@@ -398,6 +417,7 @@ function finalizeEntry(entry) {
   } else {
     entries.push(record);
   }
+  unexportedChanges = true;
   saveEntries();
   render();
   setStatus("Recorded");
@@ -419,6 +439,7 @@ function handleSubmit(rawText) {
       const idx = entries.findIndex((e) => e.truck === pendingDuplicate.entry.truck);
       if (idx !== -1) entries[idx] = { ...pendingDuplicate.entry };
       hideDuplicatePrompt();
+      unexportedChanges = true;
       saveEntries();
       render();
       setStatus("Recorded");
@@ -428,6 +449,7 @@ function handleSubmit(rawText) {
     if (lower === "new" || lower === "another" || lower === "create another") {
       entries.push({ ...pendingDuplicate.entry });
       hideDuplicatePrompt();
+      unexportedChanges = true;
       saveEntries();
       render();
       setStatus("Recorded");
@@ -454,6 +476,7 @@ function handleSubmit(rawText) {
       return;
     }
     entries.pop();
+    unexportedChanges = true;
     saveEntries();
     render();
     setStatus("Deleted.");
@@ -524,7 +547,20 @@ async function exportXlsx() {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 
-  setStatus("Recorded");
+  unexportedChanges = false;
+  setStatus(`Exported ${filename}`);
+}
+
+// --- New Report ---------------------------------------------------------
+function startNewReport() {
+  entries = [];
+  unexportedChanges = false;
+  editingIndex = null;
+  hideDuplicatePrompt();
+  resetCurrentEntry();
+  saveEntries();
+  render();
+  setStatus("New report started.");
 }
 
 // --- Wiring -------------------------------------------------------------
@@ -541,6 +577,7 @@ bodyEl.addEventListener("click", (ev) => {
   if (Number.isNaN(idx) || !entries[idx]) return;
   const truck = entries[idx].truck;
   entries.splice(idx, 1);
+  unexportedChanges = true;
   if (editingIndex !== null) {
     if (editingIndex === idx) {
       editingIndex = null;
@@ -556,6 +593,32 @@ bodyEl.addEventListener("click", (ev) => {
 document.getElementById("dupReplace").addEventListener("click", () => handleSubmit("replace"));
 document.getElementById("dupNew").addEventListener("click", () => handleSubmit("new"));
 document.getElementById("exportBtn").addEventListener("click", () => handleSubmit("export"));
+
+document.getElementById("newReportBtn").addEventListener("click", () => {
+  if (!entries.length) {
+    setStatus("Already empty — ready for a new report.");
+    return;
+  }
+  if (!unexportedChanges) {
+    startNewReport();
+    return;
+  }
+  newReportTextEl.textContent =
+    `${entries.length} truck${entries.length === 1 ? "" : "s"} not yet exported. Export first, or clear without exporting?`;
+  newReportPromptEl.classList.remove("hidden");
+});
+document.getElementById("nrExportFirst").addEventListener("click", async () => {
+  newReportPromptEl.classList.add("hidden");
+  await exportXlsx();
+  startNewReport();
+});
+document.getElementById("nrClearAnyway").addEventListener("click", () => {
+  newReportPromptEl.classList.add("hidden");
+  startNewReport();
+});
+document.getElementById("nrCancel").addEventListener("click", () => {
+  newReportPromptEl.classList.add("hidden");
+});
 
 render();
 inputEl.focus();
