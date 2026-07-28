@@ -13,10 +13,9 @@ Voice-dictated fleet inspection logging for iPhone. Walk the truck lot, dictate 
 ## Recording a truck
 
 1. Tap the input field, tap the keyboard's **mic key**, and say the **truck number** alone (e.g. "4123"). Tap Go.
-2. Say **"FAI"** alone, then tap Go. This is a verbal cue only — it never appears typed in the field.
-3. Say the **date** alone (e.g. "August 2027", "10/26", or just the digits "1027"). Tap Go.
-4. *(Optional)* Say **"notes"** then the note text, or say both together in one breath (e.g. "notes left rear tire low"). Tap Go.
-5. **Tap Go with the field empty** to save the entry as a new line. You'll see `Recorded`.
+2. Tap the mic again and say **"FAI"** followed right away, in the same breath, by the **date** (e.g. "FAI August 2027", "FAI 10/26", or "FAI 1027"). "FAI" is just a verbal cue — it never appears typed in the field. Tap Go.
+3. *(Optional)* Tap the mic and say **"notes"** then the note text, or say both together in one breath (e.g. "notes left rear tire low"). Tap Go.
+4. **Tap Go with the field empty** to save the entry as a new line. You'll see `Recorded`.
 
 You can also say everything in one continuous breath without pausing between taps (e.g. "657437 fai 1227") — the app scans the whole thing for the cue words wherever they land, so this works the same as separate taps.
 
