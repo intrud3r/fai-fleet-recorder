@@ -228,7 +228,7 @@ function normalizeSpokenText(text) {
 // Scan through it in order, splitting on the cue words ("fai"/"next"/
 // "notes"/"note") and feeding each piece through the same state machine a
 // single discrete snippet would use -- so both styles of dictating work.
-const CUE_RE = /\b(fai|next|notes?)\b/gi;
+const CUE_RE = /\b(fai|next|notes?)(?:\b|(?=\d))/gi;
 
 function processEntryText(rawText) {
   const parts = normalizeSpokenText(rawText).split(CUE_RE);
