@@ -430,7 +430,13 @@ function finalizeEntry(entry) {
 // it token by token either way, so both styles of dictating work.
 function handleSubmit(rawText) {
   const text = rawText.trim();
-  if (!text) return;
+  if (!text) {
+    // Tapping Go with nothing new to say commits whatever's been built up
+    // so far -- lets Go itself serve as the commit action instead of
+    // requiring the spoken/typed word "next" (still recognized too).
+    if (!pendingDuplicate && currentEntry.truck) commitCurrentEntry();
+    return;
+  }
   const lower = text.toLowerCase();
 
   // A pending duplicate-resolution response takes priority over everything else.
