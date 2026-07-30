@@ -511,6 +511,12 @@ function handleSubmit(rawText) {
   }
 
   processEntryText(text);
+  // Go always commits, not just an empty-field tap or a spoken "next" --
+  // covers both a full FAI entry (truck+date+notes said together) and a
+  // bare truck/equipment number alone (lot-inventory use, no FAI needed).
+  // Skipped if a duplicate prompt just came up mid-parse -- that needs an
+  // explicit reply before anything else commits.
+  if (!pendingDuplicate && currentEntry.truck) commitCurrentEntry();
 }
 
 // --- Export -------------------------------------------------------------
@@ -576,6 +582,13 @@ document.getElementById("entryForm").addEventListener("submit", (ev) => {
   refocus();
   handleSubmit(text);
 });
+// iOS Safari quirk: tapping a button while the input has focus and the
+// keyboard is up can dismiss the keyboard on the first tap without firing
+// the click/submit at all, requiring a second tap. Blocking the default
+// mousedown behavior keeps the input focused (keyboard stays open) so Go
+// registers on the first tap every time.
+document.querySelector('#entryForm button[type="submit"]')
+  .addEventListener("mousedown", (ev) => ev.preventDefault());
 bodyEl.addEventListener("click", (ev) => {
   const btn = ev.target.closest(".rowDelete");
   if (!btn) return;
