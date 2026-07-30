@@ -12,21 +12,17 @@ Voice-dictated fleet inspection logging for iPhone. Walk the truck lot, dictate 
 
 ## Recording a truck
 
-Tap the input field, tap the keyboard's **mic key**, and speak. "FAI" is just a verbal cue — it never appears typed in the field.
+Tap the input field, tap the keyboard's **mic key**, and speak everything in one breath, then tap **Go**. "FAI" is just a verbal cue — it never appears typed in the field.
 
-1. Say the **truck number** (e.g. "4123").
-2. Say **"FAI"** and the **date** (e.g. "FAI August 2027", "FAI 10/26", or "FAI 1027").
-3. *(Optional)* Say **"notes"** and the note text (e.g. "notes left rear tire low").
-4. **Tap Go with the field empty** to save the entry as a new line. You'll see `Recorded`.
+- Full inspection entry: say the **truck number**, **"FAI"** + the **date**, and optionally **"notes"** + the note text — all together (e.g. "4123 FAI August 2027 notes left rear tire low"), then tap **Go**. You'll see `Recorded`.
+- Lot-inventory ping: just say the **truck/equipment number** alone and tap **Go** — no FAI date or notes needed. Useful for a quick pass logging what's on the lot without a full inspection.
 
-You can also say everything in one continuous breath (e.g. "657437 fai 1227") — the app scans the whole thing for the cue words wherever they land, so this works the same as saying it in separate pieces.
-
-Saying "Next" out loud after everything else also commits the entry, if you prefer — but it's optional, not required.
+**Go always saves the entry** — you don't need to say "Next," and you don't need to tap Go with an empty field. Say what you need to say, tap Go once, done.
 
 ## Notes
 
 - Say **"notes"** alone as a cue, then the note text next — or combine them: "notes left rear tire low".
-- Notes are optional and can be added any time before you commit the entry.
+- Notes are optional and can be added any time before you tap Go.
 
 ## Duplicate trucks
 
@@ -39,7 +35,7 @@ Saying "Next" out loud after everything else also commits the entry, if you pref
 |---|---|
 | "Show list" | Scrolls to the recorded-trucks table |
 | "Delete last truck" | Removes the most recently recorded entry |
-| "Edit truck 4123" | Loads that truck back into the entry field — say FAI/date/notes, then Go (empty) to re-save |
+| "Edit truck 4123" | Loads that truck back into the entry field — say the FAI date and/or notes to change, then tap Go to re-save |
 | "Count trucks" | Reports how many trucks are recorded |
 | "Export" | Generates and downloads the .xlsx file |
 
